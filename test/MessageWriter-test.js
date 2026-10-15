@@ -394,12 +394,16 @@ describe('MessageWriter', () => {
       expect(await done(writer)).toBe(writeMessages([[q1(1)]], opts));
     });
 
-    it('writes quads to the stream before the message ends', async () => {
-      const stream = new PassThrough();
+    it.each([false, true])('writes quads to the stream before the message ends (objectMode: %s)', async objectMode => {
+      const stream = new PassThrough({ objectMode });
       const writer = new MessageWriter(stream, { format: 'N-Quads', end: false });
       await writer.addQuad(q1(1));
-      expect(String(stream.read())).toContain('example.org/s1');
-      expect(String(stream.read())).not.toContain('MESSAGE');
+      // read() can return one chunk at a time, so drain all available output.
+      let output = '', chunk;
+      while ((chunk = stream.read()) !== null)
+        output += chunk;
+      expect(output).toContain('example.org/s1');
+      expect(output).not.toContain('MESSAGE');
     });
 
     it('endMessage without open message writes an empty message', async () => {
