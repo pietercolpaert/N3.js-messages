@@ -1,6 +1,6 @@
 // **MessageStreamWriter** is a Node.js stream that serializes RDF Messages.
 //
-// It consumes messages (arrays of quads) and produces text.
+// It consumes messages (arrays of quads), or `{ quad, messageIndex }` objects, and produces text.
 import { Transform } from 'stream';
 import MessageWriter from './MessageWriter.js';
 
@@ -13,7 +13,9 @@ export default class MessageStreamWriter extends Transform {
   }
 
   _transform(message, encoding, done) {
-    this._writer.addMessage(message, done);
+    // A message (array of quads), or a quad of a message: `{ quad, messageIndex }`
+    if (Array.isArray(message)) this._writer.addMessage(message, done);
+    else this._writer.addQuad(message.quad, message.messageIndex, done);
   }
 
   _flush(done) {

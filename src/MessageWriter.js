@@ -37,6 +37,8 @@ export default class MessageWriter {
     this._error = null;
     this._started = false;
     this._ended = false;
+    this._open = false;
+    this._count = 0; // messages begun so far: the index of the next message
     this._declared = Object.assign({}, options.prefixes);
     this._newPrefixes = {};
     // The N3.js writer writes to this sink, which it never ends
@@ -48,8 +50,38 @@ export default class MessageWriter {
   // The callback (or returned promise) completes once the output is flushed.
   addMessage(quads, done) {
     return this._complete(done, () => {
-      this._start();
-      this._writeMessage(quads || []);
+      if (this._open) throw new Error('A message is already open');
+      this._begin();
+      for (const quad of quads || []) this._add(quad);
+      this._close();
+    });
+  }
+
+  // ### `beginMessage` opens a message. It is optional: the first `addQuad` opens one implicitly.
+  beginMessage(done) {
+    return this._complete(done, () => {
+      if (this._open) throw new Error('A message is already open');
+      this._begin();
+    });
+  }
+
+  // ### `addQuad` writes a quad into the open message right away (a message is opened if there is none).
+  // With a `messageIndex` (0-based), a change of index ends the current message and writes the empty
+  // messages in between, as rdf-writer-ts does; a lower index than the current one is an error.
+  addQuad(quad, messageIndex, done) {
+    if (typeof messageIndex === 'function') done = messageIndex, messageIndex = undefined;
+    return this._complete(done, () => {
+      if (messageIndex !== undefined && messageIndex !== null) this._moveTo(messageIndex);
+      else if (!this._open) this._begin();
+      this._add(quad);
+    });
+  }
+
+  // ### `endMessage` ends the open message with a delimiter. Without an open message, it writes an empty one.
+  endMessage(done) {
+    return this._complete(done, () => {
+      if (!this._open) this._begin();
+      this._close();
     });
   }
 
@@ -69,6 +101,8 @@ export default class MessageWriter {
     if (this._ended)
       return typeof done === 'function' ? done(null) : Promise.resolve();
     this._start();
+    if (this._open)
+      this._close();
     if (typeof done === 'function')
       return this._finish(done);
     return new Promise((resolve, reject) => this._finish((error, result) => error ? reject(error) : resolve(result)));
@@ -165,17 +199,39 @@ export default class MessageWriter {
     }
   }
 
-  _writeMessage(quads) {
+  // Opens a message: declares the prefixes that were added since the previous one
+  _begin() {
+    this._start();
     const writer = this._writer;
     for (const prefix of Object.keys(this._newPrefixes)) {
       writer.addPrefix(prefix, this._newPrefixes[prefix]);
       this._declared[prefix] = this._newPrefixes[prefix];
     }
     this._newPrefixes = {};
+    this._open = true;
+    this._count++;
+  }
+  _add(quad) {
     const record = error => error && (this._error = this._error || error);
-    for (const quad of quads)
-      writer.addQuad(quad.subject, quad.predicate, quad.object, quad.graph, record);
-    writer.addDelimiter();
+    this._writer.addQuad(quad.subject, quad.predicate, quad.object, quad.graph, record);
+  }
+  _close() {
+    this._open = false;
+    this._writer.addDelimiter();
+  }
+
+  // Makes message `index` the open message, writing empty messages for the gap
+  _moveTo(index) {
+    const current = this._count - 1;
+    if (!Number.isInteger(index) || index < 0) throw new RangeError(`Invalid message index: ${index}`);
+    if (this._open && index === current) return;
+    if (index <= current) throw new RangeError(`Message index ${index} is lower than the current message index ${current}`);
+    if (this._open) this._close();
+    while (this._count < index) {
+      this._begin();
+      this._close();
+    }
+    this._begin();
   }
 }
 

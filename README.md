@@ -108,8 +108,12 @@ const text = writeMessages(messages, { format: 'N-Quads' });  // synchronous, re
   message survives a round trip.
 - Each message starts from a clean serializer state, so consecutive messages in the same named graph are valid. Prefixes (and `baseIRI` with
   `writeBase: true`) are declared once; `addPrefix` declares more before the next message.
-- `addMessage` and `end` accept a callback or return a promise. They complete when the output stream has accepted the data, not when it was queued.
-- `MessageStreamWriter` is the `Transform` equivalent: messages in (object mode), text out.
+- Quads can also be streamed within a message, with constant memory: `beginMessage()` (optional), `addQuad(quad)` (written immediately),
+  `endMessage()` (writes the delimiter and resets the serializer state; without an open message it writes an empty one). `end()` closes an open message.
+  Alternatively, tag quads as in rdf-writer-ts, `addQuad(quad, messageIndex)`: a change of index ends the current message and writes the empty messages in
+  between; a lower index is an error. `addMessage(quads)` is shorthand for begin, add all, end, and fails if a message is open.
+- `addMessage`, `addQuad`, `beginMessage`, `endMessage` and `end` accept a callback or return a promise. They complete when the output stream has accepted the data, not when it was queued.
+- `MessageStreamWriter` is the `Transform` equivalent: messages in (object mode), text out. It also accepts `{ quad, messageIndex }` objects.
 
 ## Blank node semantics
 

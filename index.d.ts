@@ -101,6 +101,16 @@ export class MessageWriter {
   constructor(outputStream?: MessageOutputStream | NodeJS.WritableStream | null, options?: MessageWriterOptions);
   addMessage(quads: RDF.BaseQuad[], done: (error: Error | null) => void): void;
   addMessage(quads: RDF.BaseQuad[]): Promise<void>;
+  /** Opens a message; optional, as `addQuad` opens one implicitly. */
+  beginMessage(done: (error: Error | null) => void): void;
+  beginMessage(): Promise<void>;
+  /** Writes a quad right away. With a 0-based `messageIndex`, a change of index ends the message and writes empty messages for gaps; a lower index is an error. */
+  addQuad(quad: RDF.BaseQuad, messageIndex: number | undefined, done: (error: Error | null) => void): void;
+  addQuad(quad: RDF.BaseQuad, done: (error: Error | null) => void): void;
+  addQuad(quad: RDF.BaseQuad, messageIndex?: number): Promise<void>;
+  /** Ends the open message (writes an empty message if none is open). */
+  endMessage(done: (error: Error | null) => void): void;
+  endMessage(): Promise<void>;
   addPrefix(prefix: string, iri: RDF.NamedNode | string, done: (error: Error | null) => void): void;
   addPrefix(prefix: string, iri: RDF.NamedNode | string): Promise<void>;
   /** Without an output stream, the result is the written string. */

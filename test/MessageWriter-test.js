@@ -372,4 +372,104 @@ describe('MessageWriter', () => {
       }
     });
   });
+
+  describe('streaming quads within a message', () => {
+    const opts = { format: 'N-Quads' };
+    function done(writer) {
+      return writer.end();
+    }
+
+    it('writes begin, add and end like addMessage', async () => {
+      const writer = new MessageWriter(opts);
+      await writer.beginMessage();
+      await writer.addQuad(q1(1));
+      await writer.addQuad(q1(2));
+      await writer.endMessage();
+      expect(await done(writer)).toBe(writeMessages([[q1(1), q1(2)]], opts));
+    });
+
+    it('opens a message implicitly and end() closes it', async () => {
+      const writer = new MessageWriter(opts);
+      await writer.addQuad(q1(1));
+      expect(await done(writer)).toBe(writeMessages([[q1(1)]], opts));
+    });
+
+    it('writes quads to the stream before the message ends', async () => {
+      const stream = new PassThrough();
+      const writer = new MessageWriter(stream, { format: 'N-Quads', end: false });
+      await writer.addQuad(q1(1));
+      expect(String(stream.read())).toContain('example.org/s1');
+      expect(String(stream.read())).not.toContain('MESSAGE');
+    });
+
+    it('endMessage without open message writes an empty message', async () => {
+      const writer = new MessageWriter(opts);
+      await writer.addQuad(q1(1));
+      await writer.endMessage();
+      await writer.endMessage();
+      expect(await done(writer)).toBe(writeMessages([[q1(1)], []], opts));
+    });
+
+    it('closes the graph block at endMessage', async () => {
+      const writer = new MessageWriter({ format: 'TriG' });
+      await writer.addQuad(q1(1, g));
+      await writer.endMessage();
+      await writer.addQuad(q1(2, g));
+      expect(await done(writer)).toBe(writeMessages([[q1(1, g)], [q1(2, g)]], { format: 'TriG' }));
+    });
+
+    it('supports message indexes, with empty messages for gaps', async () => {
+      const writer = new MessageWriter(opts);
+      await writer.addQuad(q1(1), 0);
+      await writer.addQuad(q1(2), 0);
+      await writer.addQuad(q1(3), 3);
+      expect(await done(writer)).toBe(writeMessages([[q1(1), q1(2)], [], [], [q1(3)]], opts));
+    });
+
+    it('starts with empty messages if the first index is higher than 0', async () => {
+      const writer = new MessageWriter(opts);
+      await writer.addQuad(q1(1), 2);
+      expect(await done(writer)).toBe(writeMessages([[], [], [q1(1)]], opts));
+    });
+
+    it('rejects a lower message index', async () => {
+      const writer = new MessageWriter(opts);
+      await writer.addQuad(q1(1), 2);
+      await expect(writer.addQuad(q1(2), 1)).rejects.toThrow(/lower/);
+      await expect(writer.addQuad(q1(2), -1)).rejects.toThrow(/Invalid/);
+    });
+
+    it('rejects beginMessage and addMessage inside an open message', async () => {
+      const writer = new MessageWriter(opts);
+      await writer.beginMessage();
+      await expect(writer.beginMessage()).rejects.toThrow(/already open/);
+      await expect(writer.addMessage([])).rejects.toThrow(/already open/);
+    });
+
+    it('accepts callbacks', async () => {
+      const writer = new MessageWriter(opts);
+      const first = await new Promise(resolve => writer.addQuad(q1(1), resolve));
+      const second = await new Promise(resolve => writer.addQuad(q1(2), 1, resolve));
+      expect([first, second]).toEqual([null, null]);
+    });
+
+    it('waits for a slow output stream', async () => {
+      const stream = new SlowStream();
+      const writer = new MessageWriter(stream, opts);
+      await writer.addQuad(q1(1));
+      expect(stream.chunks.join('')).toContain('example.org/s1');
+      await writer.end();
+    });
+
+    it('MessageStreamWriter accepts { quad, messageIndex }', async () => {
+      const writer = new MessageStreamWriter(opts);
+      const chunks = [];
+      writer.on('data', c => chunks.push(c));
+      writer.write({ quad: q1(1), messageIndex: 0 });
+      writer.write({ quad: q1(2), messageIndex: 2 });
+      writer.end();
+      await new Promise(resolve => writer.on('end', resolve));
+      expect(chunks.join('')).toBe(writeMessages([[q1(1)], [], [q1(2)]], opts));
+    });
+  });
 });
