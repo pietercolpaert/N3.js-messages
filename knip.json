@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/knip/schema.json",
+  "entry": [
+    "src/browser.js",
+    "scripts/browser-checks.js",
+    "scripts/consumer/*",
+    "test/**/*-test.js",
+    "test/types/*"
+  ],
+  "project": [
+    "src/**/*.{js,ts}",
+    "scripts/**/*.{js,cjs,mjs,mts,cts}",
+    "perf/**/*.js",
+    "spec/**/*.js",
+    "test/**/*.{js,ts}",
+    "*.{js,cjs,ts}",
+    "types/**/*.d.ts"
+  ],
+  "ignoreDependencies": [
+    "babel-jest"
+  ],
+  "ignoreExportsUsedInFile": true
+}

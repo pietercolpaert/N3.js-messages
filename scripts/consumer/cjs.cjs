@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { Readable } = require('node:stream');
 const lib = require('n3.js-messages');
+
 const { parseMessages, MessageStreamParser, MessageWriter, writeMessages } = lib;
 
 const NAMES = ['MessageParser', 'MessageStreamParser', 'MessageStreamWriter', 'MessageWriter', 'parseMessages', 'writeMessages'];

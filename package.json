@@ -1,6 +1,6 @@
 {
   "name": "n3.js-messages",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "RDF Messages (message-delimited Turtle, TriG, N-Triples and N-Quads) for N3.js: message-aware parser, streaming parser and writer.",
   "author": "Pieter Colpaert",
   "license": "MIT",
@@ -21,20 +21,35 @@
   "types": "./index.d.ts",
   "exports": {
     ".": {
+      "browser": {
+        "types": "./browser.d.ts",
+        "default": "./browser/index.js"
+      },
       "types": "./index.d.ts",
       "import": "./src/index.js",
       "require": "./lib/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./browser": {
+      "types": "./browser.d.ts",
+      "import": "./browser/index.js",
+      "default": "./browser/index.js"
+    },
+    "./browser/global": "./browser/index.global.js"
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "./browser/index.global.js"
+  ],
   "engines": {
     "node": ">=18"
   },
   "files": [
     "src",
     "lib",
-    "index.d.ts"
+    "index.d.ts",
+    "browser",
+    "browser.d.ts",
+    "common.d.ts"
   ],
   "peerDependencies": {
     "n3": ">=2.13.7 <3"
@@ -48,35 +63,47 @@
   },
   "homepage": "https://github.com/pietercolpaert/n3.js-messages#readme",
   "scripts": {
-    "build": "babel src -d lib --copy-files --no-copy-ignored && node scripts/write-lib-package.js",
+    "build": "node scripts/build.js",
     "prepack": "npm run build",
     "test": "jest",
     "coverage": "jest --coverage",
-    "lint": "eslint src test spec perf scripts",
+    "lint": "eslint . && knip",
     "test:spec": "node spec/runner.js",
     "test:spec:earl": "node spec/runner.js --earl > spec/earl-report.ttl",
     "test:types": "tsc -p test/types/tsconfig.json",
     "test:package": "node scripts/test-package.js",
     "perf": "node perf/run.js",
     "perf:compare": "node perf/compare.js",
-    "spec:update": "node scripts/update-spec.js"
+    "spec:update": "node scripts/update-spec.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "check": "npm run lint && npm run typecheck && npm run test:types && npm run build && npm test -- --runInBand && npm run test:spec",
+    "ci": "npm run check && npm run test:package && npm run test:browser && npm run perf:regression",
+    "test:browser": "node scripts/test-browser.js",
+    "hooks:install": "node scripts/install-hooks.js",
+    "perf:regression": "node perf/regression.js",
+    "test:n3-extract": "node scripts/extract-n3-parser-tests.cjs"
   },
   "devDependencies": {
     "@babel/cli": "^8.0.6",
-    "@babel/core": "^8.0.7",
+    "@babel/core": "^8.0.9",
     "@babel/preset-env": "^8.0.7",
-    "@types/n3": "^1.26.4",
-    "@types/node": "^26.6.4",
+    "@types/n3": "^1.26.5",
+    "@types/node": "^26.6.5",
     "babel-jest": "^30.5.2",
-    "eslint": "^10.12.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.13.0",
     "eslint-plugin-import-x": "^4.17.1",
-    "eslint-plugin-jest": "^29.16.6",
+    "eslint-plugin-jest": "^29.17.0",
+    "events": "^3.3.0",
     "globals": "^17.13.0",
     "jest": "^30.5.2",
-    "n3": "^2.13.8",
+    "knip": "^6.43.0",
+    "n3": "^2.13.12",
+    "playwright": "^1.64.1",
     "rdf-isomorphic": "^2.0.1",
     "rdf-parser-ts": "^0.4.0",
     "rdf-writer-ts": "^0.2.1",
+    "string_decoder": "^1.3.0",
     "typescript": "^7.0.2"
   },
   "jest": {
@@ -103,5 +130,6 @@
   },
   "dependencies": {
     "@rdfjs/types": "^2.0.1"
-  }
+  },
+  "browser": "./browser/index.js"
 }

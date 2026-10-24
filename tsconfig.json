@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ],
+    "skipLibCheck": false,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/**/*.js",
+    "types/**/*.d.ts",
+    "test/types/implementation.ts"
+  ]
+}

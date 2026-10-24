@@ -30,10 +30,7 @@ jobs:
           node-version: 24.x
           cache: npm
       - run: npm ci
-      - run: npm run lint
-      # `npm test` runs jest with coverage and fails below the 100% thresholds of package.json
-      - run: npm test
-      - run: npm run test:types
+      - run: npm run check
       # LCOV and the JSON summary are kept as artifact, and sent to Coveralls for the badge.
       # Coveralls uses the built-in GITHUB_TOKEN (no secret to configure), and a failing upload
       # (for example while the repository is not yet enabled on coveralls.io) does not fail CI.
@@ -57,7 +54,7 @@ jobs:
       fail-fast: false
       matrix:
         # The minimum of `engines`, the active LTS lines, and the latest release
-        node-version: [20.x, 22.x, 24.x]
+        node-version: [18.x, 20.x, 22.x, 24.x]
         include:
           - node-version: latest
             experimental: true
@@ -65,12 +62,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
+        id: runtime
         with:
           node-version: ${{ matrix.node-version }}
+      # Build and type-check on a tooling-compatible Node; run the installed artifact
+      # with the requested consumer runtime, including the declared Node 18 minimum.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
           cache: npm
       - run: npm ci
-      - run: npx jest --coverage=false
-      - run: npm run test:spec
+      - run: npm run test:package
+        env:
+          RUNTIME_NODE: ${{ steps.runtime.outputs.node-path }}
 
   compliance:
     name: RDF Messages compliance suite
@@ -146,6 +150,27 @@ jobs:
         env:
           N3_VERSION: ${{ matrix.n3 }}
 
+  browser:
+    name: Browser bundles (n3 ${{ matrix.n3 }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        n3: ['2.13.7', 'latest']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save n3@${{ matrix.n3 }}
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:browser
+        env:
+          BROWSER_ENGINES: chromium,firefox,webkit
+
   audit:
     name: Audit of production dependencies
     runs-on: ubuntu-latest
@@ -159,7 +184,7 @@ jobs:
   summary:
     # A single check for branch protection
     if: always()
-    needs: [quality, node, compliance, n3-compatibility, package, audit]
+    needs: [quality, node, compliance, n3-compatibility, package, browser, audit]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -168,4 +193,6 @@ jobs:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
           echo "job results: $RESULTS"
-          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1;; esac
+          for result in $RESULTS; do
+            test "$result" = success || exit 1
+          done

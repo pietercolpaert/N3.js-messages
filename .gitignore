@@ -5,3 +5,4 @@ coverage/
 .perf-results/
 spec/earl-report.ttl
 scratch/
+browser/

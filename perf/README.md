@@ -158,3 +158,20 @@ the order is: ours first, then theirs):
   buffered input. I did not profile it to confirm that this is the cause.
 - **Writing** one large message is on par (1.02-1.07x); many small messages are faster with rdf-writer-ts (0.76x), as we create an N3.js writer per message.
 - **Memory** is flat for both when streaming 100k messages (0.12 MB vs 0.08 MB heap growth, noise level).
+
+## Sampling and Git regression comparisons
+
+The benchmark runner warms each case twice and rotates the starting case and reverses traversal order between sampling rounds.
+It records individual `samplesMs` alongside medians and ranges. Completed samples release their parsed
+outputs instead of retaining all results, keeping subsequent memory readings independent of earlier samples.
+Parser workloads assert expected quad/message counts after timing and check RDF equivalence before sampling.
+Writer workloads validate round trips before sampling. These checks make incorrect or incomplete output fail
+the run instead of appearing faster.
+
+`npm run perf:regression` compares synchronous parsing, 64 KiB and 16-byte streaming, and writing against
+`HEAD`, or the commit selected by `PERF_BASE_REF`. It extracts a read-only Git archive into a temporary directory
+and uses the same installed dependencies for both versions, isolating source-code changes. Each case warms up
+twice, rotates baseline/current order, checks RDF semantics outside timing, and saves raw timings and machine
+metadata to `.perf-results/regression.json`. `PERF_SAMPLES` defaults to 5; `PERF_THRESHOLD` defaults to a 20%
+increase in elapsed time. Slowdowns produce warnings; invalid outputs and harness errors fail the check.
+CI compares PRs with the PR base commit and main pushes with the preceding commit on the same runner.

@@ -1,10 +1,12 @@
 // The benchmark definitions. Each benchmark has a `name`, a `setup(sizes)` that
 // prepares (untimed) input and returns a `run()` function; `run()` may be
 // asynchronous and returns `{ quads, messages, bytes, extra? }`.
+import assert from 'node:assert/strict';
 import { once } from 'events';
 import { Writable } from 'stream';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import { isomorphic } from 'rdf-isomorphic';
 import { Parser } from 'n3';
 import {
   ordinaryTurtle, oneMessageTurtle, messageLog, messageLogHeader, messageTurtle, quadMessages,
@@ -32,6 +34,17 @@ async function loadCompetitor() {
 }
 const competitor = await loadCompetitor();
 
+function assertCounts(actual, expected) {
+  assert.equal(actual.quads, expected.quads, 'quad count');
+  assert.equal(actual.messages, expected.messages, 'message count');
+}
+
+function assertMessages(actual, expected) {
+  assert.equal(actual.length, expected.length, 'message count');
+  for (let i = 0; i < actual.length; i++)
+    assert(isomorphic(actual[i], expected[i]), `RDF semantics of message ${i}`);
+}
+
 export const CHUNK = 64 * 1024;
 
 // Sizes of a full run (S = small, L = large) and of a smoke run.
@@ -54,12 +67,14 @@ function chunkChars(text) {
 }
 
 // Pushes chunks through a MessageStreamParser and counts what comes out
-async function streamParse(chunks) {
+async function streamParse(chunks, collect = false) {
+  const groups = [];
   const parser = new MessageStreamParser({ format: 'Turtle' });
   let quads = 0, messages = 0;
   parser.on('data', message => {
     messages++;
     quads += message.length;
+    if (collect) groups.push(message);
   });
   const ended = once(parser, 'end');
   for (const chunk of chunks) {
@@ -68,16 +83,22 @@ async function streamParse(chunks) {
   }
   parser.end();
   await ended;
-  return { quads, messages };
+  return { quads, messages, value: groups };
 }
 
 function streamBenchmark(name, makeDoc, makeChunks) {
   return {
     name,
-    setup(s) {
+    async setup(s) {
       const doc = makeDoc(s);
       const chunks = makeChunks(doc.text);
-      return async () => ({ ...await streamParse(chunks), bytes: doc.bytes, extra: { chunks: chunks.length } });
+      const preflight = await streamParse(chunks, true);
+      assertMessages(preflight.value, parseMessages(doc.text));
+      async function run() {
+        return { ...await streamParse(chunks), bytes: doc.bytes, extra: { chunks: chunks.length } };
+      }
+      run.validate = result => assertCounts(result, doc);
+      return run;
     },
   };
 }
@@ -87,10 +108,22 @@ function parseBenchmark(name, makeDoc, parse) {
     name,
     setup(s) {
       const doc = makeDoc(s);
-      return () => {
+      // Compare full RDF semantics once before timing, including per-message blank node scope.
+      const reference = messageParse(doc.text).value;
+      const observed = parse(doc.text);
+      const groups = Array.isArray(observed.value[0]) ? observed.value : [observed.value];
+      assertMessages(groups, reference);
+      function run() {
         const result = parse(doc.text);
         return { quads: doc.quads, messages: result.messages, bytes: doc.bytes, keep: result.value };
+      }
+      run.validate = result => {
+        assertCounts(result, doc);
+        const actual = result.keep;
+        const count = Array.isArray(actual[0]) ? actual.reduce((sum, group) => sum + group.length, 0) : actual.length;
+        assert.equal(count, doc.quads, 'parsed quad count');
       };
+      return run;
     },
   };
 }
@@ -111,6 +144,7 @@ function writerBenchmark(name, makeMessages, format) {
     setup(s) {
       const messages = makeMessages(s);
       const quads = messages.reduce((n, m) => n + m.length, 0);
+      assertMessages(parseMessages(writeMessages(messages, { format }), { format }), messages);
       return () => {
         const text = writeMessages(messages, { format });
         return { quads, messages: messages.length, bytes: Buffer.byteLength(text) };
@@ -171,6 +205,7 @@ async function memoryStream(s, gc, implementation) {
   parser.end();
   await finished;
   quads = tally.quads;
+  assertCounts({ quads, messages }, { quads: total * s.perMessage, messages: total });
   const MB = 1024 * 1024;
   // Growth: highest sample after the first one, compared to the first sample (10% of the input)
   const growth = Math.max(0, Math.max(...samples.slice(1)) - samples[0]);
@@ -221,13 +256,14 @@ export function createBenchmarks() {
     writerBenchmark('writer-many-trig', manySmall, 'TriG'),
     {
       name: 'writer-stream-many-nquads',
-      setup(s) {
+      async setup(s) {
         const messages = manySmall(s);
         const quads = messages.reduce((n, m) => n + m.length, 0);
-        return async () => {
+        async function run(collect = false) {
+          const chunks = [];
           const writer = new MessageStreamWriter({ format: 'N-Quads' });
           let bytes = 0;
-          writer.on('data', chunk => (bytes += chunk.length));
+          writer.on('data', collect ? chunk => { bytes += Buffer.byteLength(chunk); chunks.push(chunk); } : chunk => (bytes += Buffer.byteLength(chunk)));
           const ended = once(writer, 'end');
           for (const message of messages) {
             if (!writer.write(message))
@@ -235,8 +271,10 @@ export function createBenchmarks() {
           }
           writer.end();
           await ended;
-          return { quads, messages: messages.length, bytes };
-        };
+          return { quads, messages: messages.length, bytes, keep: collect ? chunks.join('') : null };
+        }
+        assertMessages(parseMessages((await run(true)).keep, { format: 'N-Quads' }), messages);
+        return run;
       },
     },
     // (h) memory of a long stream; `setup` receives the gc function
@@ -256,10 +294,18 @@ export function createBenchmarks() {
 
 // Pushes chunks through the StreamParser of rdf-parser-ts. Its output is a quad (or message quad) per
 // item, so the messages are counted by their counter.
-async function competitorStreamParse(chunks) {
+async function competitorStreamParse(chunks, collect = false) {
+  const groups = [];
   const parser = new competitor.StreamParser({});
   const tally = { quads: 0, messages: 0 };
-  parser.on('data', item => competitorConsume(item, tally));
+  parser.on('data', item => {
+    competitorConsume(item, tally);
+    if (collect) {
+      const index = item.messageCounter ?? 0;
+      while (groups.length <= index) groups.push([]);
+      groups[index].push(item.quad ?? item);
+    }
+  });
   const ended = once(parser, 'end');
   for (const chunk of chunks) {
     if (!parser.write(chunk))
@@ -267,7 +313,7 @@ async function competitorStreamParse(chunks) {
   }
   parser.end();
   await ended;
-  return { quads: tally.quads, messages: tally.messages };
+  return { quads: tally.quads, messages: tally.messages, value: groups };
 }
 
 function competitorConsume(item, tally) {
@@ -280,10 +326,16 @@ function competitorConsume(item, tally) {
 function competitorStreamBenchmark(name, makeDoc, makeChunks) {
   return {
     name,
-    setup(s) {
+    async setup(s) {
       const doc = makeDoc(s);
       const chunks = makeChunks(doc.text);
-      return async () => ({ ...await competitorStreamParse(chunks), bytes: doc.bytes, extra: { chunks: chunks.length } });
+      const preflight = await competitorStreamParse(chunks, true);
+      assertMessages(preflight.value, parseMessages(doc.text));
+      async function run() {
+        return { ...await competitorStreamParse(chunks), bytes: doc.bytes, extra: { chunks: chunks.length } };
+      }
+      run.validate = result => assertCounts(result, doc);
+      return run;
     },
   };
 }
@@ -294,7 +346,7 @@ function competitorWriterBenchmark(name, makeMessages, format) {
     setup(s) {
       const messages = makeMessages(s);
       const quads = messages.reduce((n, m) => n + m.length, 0);
-      return () => {
+      function run() {
         const writer = new competitor.Writer({ format });
         for (const message of messages)
           writer.addMessage(message);
@@ -302,8 +354,10 @@ function competitorWriterBenchmark(name, makeMessages, format) {
         writer.end((error, output) => (failure = error, text = output));
         if (failure)
           throw failure;
-        return { quads, messages: messages.length, bytes: Buffer.byteLength(text) };
-      };
+        return { quads, messages: messages.length, bytes: Buffer.byteLength(text), keep: text };
+      }
+      assertMessages(parseMessages(run().keep, { format }), messages);
+      return run;
     },
   };
 }

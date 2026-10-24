@@ -53,6 +53,10 @@ try {
   console.log(`Temporary directory: ${tmp}`);
   console.log(`n3 version under test: ${N3_VERSION}`);
 
+  // A stale generated module must disappear when prepack rebuilds the package.
+  fs.mkdirSync(path.join(ROOT, 'lib'), { recursive: true });
+  fs.writeFileSync(path.join(ROOT, 'lib', '__package_test_stale__.js'), '// obsolete generated module\n');
+
   // ## Pack
   const packDir = path.join(tmp, 'pack');
   fs.mkdirSync(packDir);
@@ -73,8 +77,8 @@ try {
   console.log(`Tarball ${packed.filename}: ${formatSize(fs.statSync(tarball).size)} packed, ${formatSize(packed.unpackedSize)} unpacked, ${files.length} files`);
   for (const file of files)
     console.log(`  ${file}`);
-  check('tarball contains only src/, lib/, index.d.ts, package.json, README, LICENSE', () => {
-    const allowed = /^(?:src\/|lib\/|index\.d\.ts$|package\.json$|README(?:\.md)?$|LICENSE(?:\.md|\.txt)?$)/i;
+  check('tarball contains only public sources, builds, declarations, package.json, README, LICENSE', () => {
+    const allowed = /^(?:src\/|lib\/|browser\/|(?:index|browser|common)\.d\.ts$|package\.json$|README(?:\.md)?$|LICENSE(?:\.md|\.txt)?$)/i;
     const development = /(?:^|\/)(?:test|perf|spec|scripts|scratch)\//;
     const unexpected = [];
     const leaked = [];
@@ -90,9 +94,15 @@ try {
       throw new Error(`Unexpected files: ${unexpected.join(', ')}`);
   });
   check('tarball contains the entry points', () => {
-    for (const file of ['index.d.ts', 'package.json', 'src/index.js', 'lib/index.js', 'lib/package.json'])
+    for (const file of ['index.d.ts', 'package.json', 'src/index.js', 'lib/index.js', 'lib/package.json', 'browser/index.js', 'browser/index.global.js', 'browser/THIRD-PARTY-LICENSES.txt', 'browser.d.ts', 'common.d.ts'])
       if (!files.includes(file))
         throw new Error(`Missing ${file}`);
+  });
+  check('generated Node modules match current sources', () => {
+    const expected = fs.readdirSync(path.join(ROOT, 'src')).filter(file => file.endsWith('.js') && file !== 'browser.js').sort();
+    const actual = files.filter(file => /^lib\/[^/]+\.js$/.test(file)).map(file => file.slice(4)).sort();
+    if (JSON.stringify(actual) !== JSON.stringify(expected))
+      throw new Error(`Stale or missing generated modules: expected ${expected}, got ${actual}`);
   });
   const packedManifest = JSON.parse(run('tar', ['-xzOf', tarball, 'package/package.json']));
   check('package.json declares n3 as peer and @rdfjs/types as dependency', () => {
@@ -134,7 +144,7 @@ try {
   check('CommonJS consumer (require), single n3 install', () => run(process.execPath, ['cjs.cjs'], { cwd: consumer }).trim());
 
   // ## TypeScript
-  for (const file of ['types.mts', 'types.cts'])
+  for (const file of ['types.mts', 'types.cts', 'browser.mts'])
     fs.copyFileSync(path.join(CONSUMER_FIXTURES, file), path.join(consumer, file));
   const rdfTypesInstalled = fs.existsSync(path.join(consumer, 'node_modules', '@rdfjs', 'types'));
   if (!rdfTypesInstalled) {
@@ -145,8 +155,20 @@ try {
     compilerOptions: {
       strict: true, noEmit: true, module: 'nodenext', moduleResolution: 'nodenext', target: 'es2022', types: ['node'], skipLibCheck: false,
     },
-    files: ['types.mts', 'types.cts'],
+    files: ['types.mts', 'types.cts', 'browser.mts'],
   }));
+  fs.copyFileSync(path.join(CONSUMER_FIXTURES, 'runtime.cjs'), path.join(consumer, 'runtime.cjs'));
+  if (process.env.RUNTIME_NODE)
+    check('packed artifact on minimum supported Node', () => run(process.env.RUNTIME_NODE, ['runtime.cjs'], { cwd: consumer }).trim());
+  fs.copyFileSync(path.join(CONSUMER_FIXTURES, 'browser-root.mts'), path.join(consumer, 'browser-root.mts'));
+  fs.writeFileSync(path.join(consumer, 'tsconfig.browser.json'), JSON.stringify({
+    compilerOptions: { strict: true, noEmit: true, module: 'nodenext', moduleResolution: 'nodenext',
+      target: 'es2022', lib: ['es2022', 'dom', 'dom.iterable'], types: [], skipLibCheck: false, customConditions: ['browser'] },
+    files: ['browser.mts', 'browser-root.mts'],
+  }));
+  check('browser declarations compile without Node ambient types', () => {
+    run(process.execPath, [path.join(consumer, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.browser.json'], { cwd: consumer });
+  });
   check('TypeScript consumer compiles against index.d.ts (ESM and CJS)', () => {
     const tsc = path.join(consumer, 'node_modules', 'typescript', 'bin', 'tsc');
     const version = run(process.execPath, [tsc, '--version'], { cwd: consumer }).trim();
