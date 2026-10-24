@@ -2,13 +2,18 @@
 import { StringDecoder } from 'string_decoder';
 import MessageParserCore from './MessageParserCore.js';
 
+/** @template {import('@rdfjs/types').BaseQuad} [Q=import('@rdfjs/types').Quad] */
 export default class MessageParser {
+  /** @param {import('../common.js').MessageParserOptions<Q>} [options] */
   constructor(options) {
+    /** @type {import('../common.js').MessageParserOptions<Q>} */
     this._options = options || {};
     // Fail early on unsupported options
-    this._createCore({});
+    // Construction only validates options; this core never receives input.
+    this._createCore(/** @type {import('./internal.js').ParserSink<Q>} */ ({}));
   }
 
+  /** @param {import('./internal.js').ParserSink<Q>} sink */
   _createCore(sink) {
     return new MessageParserCore(this._options, sink);
   }
@@ -21,23 +26,45 @@ export default class MessageParser {
   // callbacks `onMessage(error, message, prefixes)`, `onQuad(error, quad, messageIndex)`,
   // `onPrefix(prefix, term)` and `onVersion(label)`, messages are reported as soon
   // as they are complete. The final call has `null` as message.
+  /**
+   * @overload
+   * @param {string} input
+   * @returns {Q[][]}
+   */
+  /**
+   * @overload
+   * @param {string | NodeJS.ReadableStream} input
+   * @param {import('../common.js').MessageCallback<Q> | import('../common.js').MessageParseCallbacks<Q>} [callbacks]
+   * @returns {void}
+   */
+  /**
+   * @param {string | NodeJS.ReadableStream} input
+   * @param {import('../common.js').MessageCallback<Q> | import('../common.js').MessageParseCallbacks<Q>} [callbacks]
+   * @returns {Q[][] | undefined}
+   */
   parse(input, callbacks) {
     if (typeof callbacks === 'function')
       callbacks = { onMessage: callbacks };
+
+    /** @type {Q[][] | null} */
     const messages = callbacks ? null : [];
+
+    /** @type {Error | null} */
     let error = null;
     callbacks = callbacks || {};
+
+    /** @type {import('./internal.js').ParserSink<Q>} */
     const sink = {
       message: (quads, index) => callbacks.onMessage ? callbacks.onMessage(null, quads, undefined, index) : messages && messages.push(quads),
       end: prefixes => callbacks.onMessage && callbacks.onMessage(null, null, prefixes),
       error: e => {
         error = e;
-        callbacks.onMessage && callbacks.onMessage(e);
+        callbacks.onMessage && callbacks.onMessage(e, null);
         callbacks.onQuad && callbacks.onQuad(e);
       },
     };
     if (callbacks.onQuad)
-      sink.quad = (quad, index) => callbacks.onQuad(null, quad, index);
+      sink.quad = (quad, index) => callbacks.onQuad?.(null, quad, index);
     if (callbacks.onPrefix)
       sink.prefix = callbacks.onPrefix;
     if (callbacks.onVersion)
@@ -65,6 +92,11 @@ export default class MessageParser {
   }
 }
 
+/**
+ * @template {import('@rdfjs/types').BaseQuad} [Q=import('@rdfjs/types').Quad]
+ * @param {string} input
+ * @param {import('../common.js').MessageParserOptions<Q>} [options]
+ */
 // ### `parseMessages` synchronously parses a string into an array of messages
 export function parseMessages(input, options) {
   return new MessageParser(options).parse(input);

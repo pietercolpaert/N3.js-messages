@@ -5,8 +5,16 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "target": "es2022",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "skipLibCheck": false
   },
-  "include": ["*.ts"]
+  "include": [
+    "*.ts",
+    "*.mts"
+  ],
+  "exclude": [
+    "implementation.ts"
+  ]
 }

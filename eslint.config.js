@@ -1,12 +1,16 @@
 import globals from 'globals';
-import importX from 'eslint-plugin-import-x';
+import importPlugin, { flatConfigs } from 'eslint-plugin-import-x';
 import jest from 'eslint-plugin-jest';
 
 // Adapted from the ESLint configuration of rdfjs/N3.js, so that both projects share one code style.
 export default [
+  { files: ['src/browser.js', 'test/browser/**/*.js'], languageOptions: { globals: globals.browser } },
   {
     ignores: [
       'lib/**',
+      'browser/**',
+      '**/*.d.ts',
+      'types/**',
       'coverage/**',
       'scratch/**',
       'spec/fixtures/**',
@@ -17,10 +21,10 @@ export default [
 
   // Base configuration (was the root .eslintrc), applied to all sources.
   {
-    files: ['**/*.js', '**/*.mjs'],
+    files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
 
     plugins: {
-      'import-x': importX,
+      'import-x': importPlugin,
     },
 
     languageOptions: {
@@ -34,7 +38,7 @@ export default [
 
     rules: {
       // import-x/recommended (was plugin:import/recommended)
-      ...importX.flatConfigs.recommended.rules,
+      ...flatConfigs.recommended.rules,
 
       // Possible Errors
       'comma-dangle': [2, 'always-multiline'],
@@ -165,7 +169,7 @@ export default [
       'id-match': 2,
       'indent-legacy': [2, 2, { VariableDeclarator: 2 }],
       'key-spacing': [2, { mode: 'minimum' }],
-      'lines-around-comment': 2,
+      'lines-around-comment': [2, { allowBlockStart: true, allowClassStart: true, allowObjectStart: true }],
       'linebreak-style': 2,
       'max-nested-callbacks': [2, 1],
       'new-cap': 2,
@@ -219,15 +223,7 @@ export default [
       'import-x/no-mutable-exports': 2,
       'import-x/no-named-as-default': 2,
       'import-x/no-named-as-default-member': 2,
-      // NOTE: ESLint 10 removed the FileEnumerator API this rule relies on, so
-      // it is currently a no-op (import-x logs a warning and reports nothing).
-      // It was also inert in the previous config (`no-unused-modules: 2` with no
-      // `unusedExports`/`missingExports` option reports nothing). Kept enabled
-      // with the suppress flag for when import-x restores the API.
-      'import-x/no-unused-modules': [2, {
-        unusedExports: true,
-        suppressMissingFileEnumeratorAPIWarning: true,
-      }],
+      // Knip checks unused modules and exports as part of npm run lint.
       'import-x/no-amd': 2,
       'import-x/no-commonjs': 2,
       'import-x/no-import-module-exports': 2,
@@ -344,6 +340,8 @@ export default [
     rules: {
       'no-console': 0,
       'no-process-exit': 0,
+      'max-nested-callbacks': 0,
+      'import-x/dynamic-import-chunkname': 0,
 
       'no-sync': 0,
       'no-process-env': 0,
@@ -353,6 +351,31 @@ export default [
       'import-x/no-internal-modules': 0,
       'import-x/no-relative-parent-imports': 0,
     },
+  },
+
+  {
+    files: ['eslint.config.js', 'babel.config.cjs'],
+    rules: { 'import-x/no-commonjs': 0, 'import-x/unambiguous': 0 },
+  },
+
+  {
+    files: ['scripts/browser-checks.js'],
+    languageOptions: { globals: globals.browser },
+    rules: { 'max-nested-callbacks': 0, 'no-shadow': 0 },
+  },
+  {
+    files: ['scripts/test-browser.js', 'scripts/extract-n3-parser-tests.cjs'],
+    languageOptions: { globals: globals.browser },
+    rules: { 'max-nested-callbacks': 0, 'no-new-func': 0, 'import-x/no-dynamic-require': 0, 'func-style': 0 },
+  },
+
+  {
+    files: ['scripts/consumer/*'],
+    rules: { 'func-style': 0, 'no-continue': 0, 'import-x/extensions': 0 },
+  },
+  {
+    files: ['test/UpstreamGrammar-test.js'],
+    rules: { 'no-sync': 0, 'func-style': 0, 'jest/no-conditional-expect': 0 },
   },
 
   // Spec runner

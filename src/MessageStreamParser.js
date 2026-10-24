@@ -6,10 +6,14 @@ import { Transform } from 'stream';
 import { StringDecoder } from 'string_decoder';
 import MessageParserCore from './MessageParserCore.js';
 
+/** @template {import('@rdfjs/types').BaseQuad} [Q=import('@rdfjs/types').Quad] */
 export default class MessageStreamParser extends Transform {
+  /** @param {import('../common.js').MessageParserOptions<Q>} [options] */
   constructor(options) {
     super({ decodeStrings: false, readableObjectMode: true });
     this._decoder = new StringDecoder('utf8');
+
+    /** @type {Error | null} */
     this._error = null;
     this._core = new MessageParserCore(options, {
       message: quads => this.push(quads),
@@ -20,11 +24,15 @@ export default class MessageStreamParser extends Transform {
     });
   }
 
+  /** @param {string | Buffer} chunk
+   * @param {BufferEncoding} encoding
+   * @param {import('node:stream').TransformCallback} done */
   _transform(chunk, encoding, done) {
     this._core.write(typeof chunk === 'string' ? chunk : this._decoder.write(chunk));
     done(this._error);
   }
 
+  /** @param {import('node:stream').TransformCallback} done */
   _flush(done) {
     this._core.write(this._decoder.end());
     this._core.end();

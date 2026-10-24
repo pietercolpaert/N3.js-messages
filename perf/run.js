@@ -4,7 +4,7 @@
 //   npm run perf -- --filter=stream   only benchmarks whose name contains "stream"
 //   npm run perf -- --out=file.json   write the results elsewhere
 //
-// Every benchmark is warmed up once, then run several times; the median is reported.
+// Every benchmark is warmed up twice, then run several times; the median is reported.
 // The suite re-launches itself with `--expose-gc`, so heap numbers are taken after a forced gc.
 import { spawnSync } from 'child_process';
 import fs from 'fs';
@@ -54,19 +54,13 @@ async function measure(run) {
   gc();
   // With gc, while the result is still reachable: what the parse retains
   const retained = process.memoryUsage().heapUsed;
-  const keep = result.keep;
+  if (run.validate) run.validate(result);
   result.keep = null;
-  return { ms, peakMB: Math.max(0, peak - base) / MB, retainedMB: Math.max(0, retained - base) / MB, result, keep };
+  return { ms, peakMB: Math.max(0, peak - base) / MB, retainedMB: Math.max(0, retained - base) / MB, result };
 }
 
-async function runBenchmark(benchmark, s) {
-  const run = await benchmark.setup(s, gc);
-  const n = benchmark.once ? 1 : iterations;
-  if (!benchmark.once)
-    await measure(run);
-  const runs = [];
-  for (let i = 0; i < n; i++)
-    runs.push(await measure(run));
+function summarize(benchmark, runs) {
+  const n = runs.length;
   const ms = median(runs.map(r => r.ms));
   const typical = runs.find(r => r.ms === ms) || runs[0];
   const { quads, messages, bytes, extra } = typical.result;
@@ -75,6 +69,7 @@ async function runBenchmark(benchmark, s) {
     minMs: Math.min(...runs.map(r => r.ms)),
     maxMs: Math.max(...runs.map(r => r.ms)),
     iterations: n,
+    samplesMs: runs.map(run => run.ms),
     quads,
     messages,
     bytes,
@@ -96,17 +91,32 @@ function fmt(value, digits = 0) {
 const s = sizes(quick);
 const results = {};
 const benchmarks = createBenchmarks().filter(b => !filter || b.name.includes(filter));
-console.log(`n3.js-messages performance suite (${quick ? 'quick' : 'full'}, ${iterations} iterations + warm-up, median)`);
+console.log(`n3.js-messages performance suite (${quick ? 'quick' : 'full'}, ${iterations} iterations + 2 warm-ups, median)`);
 console.log(`node ${process.version}, ${os.cpus()[0].model}, ${process.platform}/${process.arch}\n`);
 
 const header = ['benchmark', 'ms', 'quads', 'quads/s', 'msgs/s', 'MB/s', 'peak MB', 'kept MB'];
 const rows = [header];
+// Prepare and warm each case outside sampling; rotate the starting case each round.
+const prepared = [];
 for (const benchmark of benchmarks) {
-  if (process.stdout.isTTY)
-    process.stdout.write(`running ${benchmark.name} ...\r`);
-  else
-    console.error(`running ${benchmark.name}`);
-  const r = await runBenchmark(benchmark, s);
+  const run = await benchmark.setup(s, gc);
+  if (!benchmark.once) {
+    await measure(run);
+    await measure(run);
+  }
+  prepared.push({ benchmark, run, runs: [] });
+}
+for (let sample = 0; sample < iterations; sample++) {
+  for (let offset = 0; offset < prepared.length; offset++) {
+    const entry = prepared[(sample + (sample % 2 ? -offset : offset) + prepared.length) % prepared.length];
+    if (!entry.benchmark.once || sample === 0) {
+      console.error(`sampling ${entry.benchmark.name} (${sample + 1})`);
+      entry.runs.push(await measure(entry.run));
+    }
+  }
+}
+for (const { benchmark, runs } of prepared) {
+  const r = summarize(benchmark, runs);
   results[benchmark.name] = r;
   rows.push([benchmark.name, fmt(r.ms, 1), fmt(r.quads), fmt(r.quadsPerSec), fmt(r.messagesPerSec), fmt(r.mbPerSec, 1),
     fmt(r.peakMB, 1), fmt(r.retainedMB, 1)]);
@@ -140,6 +150,8 @@ const output = {
     cpus: os.cpus().length,
     quick,
     iterations,
+    warmups: 2,
+    sampling: 'rotating order',
     sizes: s,
     filter: filter || null,
   },

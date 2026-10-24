@@ -113,7 +113,6 @@ function prefixText() {
 }
 
 export const VERSION_TURTLE = '@version "1.2-messages" .\n';
-export const VERSION_LINE = 'VERSION "1.2-messages"\n';
 
 // ## Documents. All return { text, quads, messages, bytes }.
 function result(text, quads, messages) {
@@ -124,12 +123,6 @@ function result(text, quads, messages) {
 export function ordinaryTurtle(count, seed = 1) {
   const quads = createQuads(mulberry32(seed), count);
   return result(prefixText() + triplesText(quads, true), count, 1);
-}
-
-// An ordinary N-Triples document
-export function ordinaryNTriples(count, seed = 1) {
-  const quads = createQuads(mulberry32(seed), count);
-  return result(triplesText(quads, false), count, 1);
 }
 
 // The same quads as `ordinaryTurtle`, announced as a message log with exactly one message

@@ -5,29 +5,42 @@ import { EventEmitter } from 'events';
 import { Parser, DataFactory } from 'n3';
 import { resolveFormat, isMessagesVersion, baseVersion, isSupportedVersion } from './formats.js';
 
+/** @typedef {import('@rdfjs/types').Term} BaseTerm */
+/** @template {import('@rdfjs/types').BaseQuad} [Q=import('@rdfjs/types').Quad] */
 export default class MessageParserCore {
   // `sink` receives `message(quads, index)`, `end(prefixes)`, `error(error)`
   // and optionally `quad(quad, messageIndex)`, `prefix(prefix, term)`, `version(label)`
+  /**
+   * @param {import('../common.js').MessageParserOptions<Q> | undefined} options
+   * @param {import('./internal.js').ParserSink<Q>} sink
+   */
   constructor(options, sink) {
     options = options || {};
     const format = resolveFormat(options.format);
     this._sink = sink;
-    this._factory = options.factory || DataFactory;
+
+    /** @type {import('../common.js').MessageQuadFactory<Q>} */
+    this._factory = options.factory || /** @type {import('../common.js').MessageQuadFactory<Q>} */ (DataFactory);
     this._blankNodePrefix = typeof options.blankNodePrefix === 'string' ?
       options.blankNodePrefix.replace(/^_:/, '') : undefined;
     this._blankNodeCounter = 0;
     this._supportedVersions = Parser.SUPPORTED_VERSIONS;
     this._messages = options.messages === true || isMessagesVersion(options.version);
     this._index = 0;
+
+    /** @type {Q[] | null} */
     this._current = null;
+
+    /** @type {Map<string, import('@rdfjs/types').BlankNode> | null} */
     this._scope = null;
     this._seenQuad = false;
     this._failed = false;
     this._finished = false;
 
+    /** @type {import('n3').ParserOptions} */
     const n3Options = {
       format: format.name,
-      factory: this._factory,
+      factory: /** @type {import('@rdfjs/types').DataFactory} */ (/** @type {unknown} */ (this._factory)),
       // Version labels are validated here, because N3.js does not know `-messages` labels
       parseUnsupportedVersions: true,
       // N3.js reports `MESSAGE` and `@message .` between statements through `onDirective`,
@@ -47,7 +60,7 @@ export default class MessageParserCore {
     this._line = 0;
     this._delimiterLine = 0;
     new Parser(n3Options).parse(this._input, {
-      onQuad: (error, quad, prefixes) => this._onQuad(error, quad, prefixes),
+      onQuad: (error, quad, prefixes) => this._onQuad(error, /** @type {Q | null} */ (quad), prefixes),
       onPrefix: (prefix, term) => this._failed || sink.prefix && sink.prefix(prefix, term),
       onVersion: label => this._failed || this._announce(label),
       onDirective: () => this._failed || this._delimiter(),
@@ -56,6 +69,7 @@ export default class MessageParserCore {
   }
 
   // ### `write` accepts the next chunk of text
+  /** @param {string} text */
   write(text) {
     if (!this._failed && !this._finished && text.length > 0)
       this._input.emit('data', text);
@@ -68,6 +82,7 @@ export default class MessageParserCore {
   }
 
   // Keeps track of lines; in N-Triples and N-Quads, a delimiter must be on its own line
+  /** @param {{ line: number; type: string }} token */
   _onToken(token) {
     const line = token.line, delimiter = token.type === 'MESSAGE';
     if (this._lineMode && !this._failed &&
@@ -78,6 +93,9 @@ export default class MessageParserCore {
     this._line = line;
   }
 
+  /** @param {Error | null} error
+   * @param {Q | null} quad
+   * @param {Record<string, import('@rdfjs/types').NamedNode>} [prefixes] */
   _onQuad(error, quad, prefixes) {
     if (this._failed || this._finished)
       return;
@@ -93,6 +111,7 @@ export default class MessageParserCore {
     }
   }
 
+  /** @param {Q} quad */
   _addQuad(quad) {
     this._seenQuad = true;
     // Blank node labels are scoped to their message
@@ -105,6 +124,7 @@ export default class MessageParserCore {
       this._sink.quad(quad, this._index);
   }
 
+  /** @param {string} label */
   _announce(label) {
     const error = this._checkVersion(label);
     if (error)
@@ -119,6 +139,8 @@ export default class MessageParserCore {
   }
 
   // Validates a version label, and returns an error for unsupported ones
+  /** @param {string} label
+   * @param {boolean} [throwing] */
   _checkVersion(label, throwing) {
     if (isSupportedVersion(baseVersion(label), this._supportedVersions))
       return null;
@@ -144,6 +166,7 @@ export default class MessageParserCore {
     this._sink.message(quads, this._index++);
   }
 
+  /** @param {Error} error */
   _fail(error) {
     this._failed = true;
     this._current = null;
@@ -152,6 +175,8 @@ export default class MessageParserCore {
 
   // ## Blank node scoping
 
+  /** @param {Q} quad
+   * @returns {Q} */
   _scopeQuad(quad) {
     const subject = this._scopeTerm(quad.subject);
     const predicate = this._scopeTerm(quad.predicate);
@@ -162,6 +187,9 @@ export default class MessageParserCore {
       quad : this._factory.quad(subject, predicate, object, graph);
   }
 
+  /** @template {BaseTerm} T
+   * @param {T} term
+   * @returns {T} */
   _scopeTerm(term) {
     if (term.termType === 'BlankNode') {
       const scope = this._scope || (this._scope = new Map());
@@ -171,8 +199,9 @@ export default class MessageParserCore {
           this._factory.blankNode(`${this._blankNodePrefix}${this._blankNodeCounter++}`);
         scope.set(term.value, scoped);
       }
-      return scoped;
+      return /** @type {T} */ (/** @type {unknown} */ (scoped));
     }
-    return term.termType === 'Quad' ? this._scopeQuad(term) : term;
+    return term.termType === 'Quad' ? /** @type {T} */ (/** @type {unknown} */ (
+      this._scopeQuad(/** @type {Q} */ (/** @type {unknown} */ (term))))) : term;
   }
 }

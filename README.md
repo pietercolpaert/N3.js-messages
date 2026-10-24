@@ -88,6 +88,51 @@ for await (const message of messages)
 Chunk boundaries may be anywhere (inside `MESSAGE`, inside an IRI, between the bytes of a character, after the CR of a CRLF);
 the result is identical to parsing the whole string at once.
 
+## Browser usage
+
+Import the browser entry with a bundler:
+
+```js
+import { parseMessages, MessageStreamParser, MessageStreamWriter } from 'n3.js-messages/browser';
+
+const messages = parseMessages('<https://example.org/s> <https://example.org/p> "hello" .');
+
+const response = await fetch('/messages.trig');
+await response.body
+  .pipeThrough(new MessageStreamParser({
+    format: 'TriG',
+    onPrefix: (prefix, term) => console.log(prefix, term.value),
+    onVersion: version => console.log(version),
+  }))
+  .pipeTo(new WritableStream({
+    write(message) { console.log(message); },
+  }));
+```
+
+Browser-aware bundlers can also select this entry through the package's `browser` export condition.
+The explicit `/browser` entry works without changing TypeScript resolution settings. For automatic selection
+in TypeScript, add `"customConditions": ["browser"]` to your browser project's compiler options.
+
+`MessageParser`, `parseMessages`, `MessageWriter`, and `writeMessages` retain their string APIs.
+Browser `MessageParser.parse` accepts strings; use `MessageStreamParser` for streams. The browser stream
+classes use native **Web Streams**, with `readable` and `writable` properties and `pipeThrough()`;
+Node's `.on()`, `.pipe()`, and stream-based `MessageParser.parse` remain available from the Node entry.
+
+The browser parser accepts strings, `ArrayBuffer`s, and typed array/DataView chunks. It decodes UTF-8
+across chunk boundaries, preserves empty messages and blank node scope, and rejects parse failures
+through the stream. Prefix and version callbacks are passed in its options. Native stream backpressure,
+source errors, and cancellation propagate through `pipeThrough()`; each complete message is emitted
+as an array, so the largest message must fit in memory.
+
+`MessageStreamWriter` accepts arrays of quads or `{ quad, messageIndex }` items and emits strings.
+Pipe its output through `new TextEncoderStream()` when UTF-8 bytes are needed. Both stream classes
+require native `TransformStream`; the bundles also work in module workers.
+
+For a direct ESM import without a bundler, serve the self-contained `browser/index.js` file from the npm
+tarball. The classic `browser/index.global.js` bundle exposes `globalThis.N3Messages`. Both bundles
+include N3's parser, writer, and factory, with source maps and third-party license notices; the Node
+entry continues to share the installed N3 peer. Keep `THIRD-PARTY-LICENSES.txt` with redistributed bundles.
+
 ## Writing
 
 ```js
@@ -213,18 +258,34 @@ These are one machine's numbers from a single process: run `npm run perf` on you
 
 ## Development
 
+The package runtime supports Node.js 18 and later. Development/build tools require a newer Node;
+CI uses Node.js 24 to build and checks packed artifacts separately on Node.js 18, 20, 22, and 24.
+
 ```sh
 npm ci
-npm test               # unit, regression, property tests, with coverage (100% required)
-npm run lint
-npm run test:spec      # official RDF Messages test suite
-npm run test:types     # TypeScript declarations
-npm run test:package   # packs the tarball and tests it in a clean consumer project (needs network)
+npm run check          # lint + unused code, implementation/types, clean builds, tests, conformance
+npm run ci             # check + clean consumer install + real browser tests (network/browser binaries)
+npm run typecheck      # strict checkJs, noUncheckedIndexedAccess, and implementation API checks
+npm run test:types     # positive/negative public declaration tests
+npm run test:package   # tarball contents, ESM/CJS consumers and browser types without Node globals
+npx playwright install chromium firefox webkit
+BROWSER_ENGINES=chromium,firefox,webkit npm run test:browser
+npm run hooks:install  # optional: install a pre-commit hook running npm run check
 npm run perf
-npm pack --dry-run
+npm run perf:regression # compare against HEAD; PERF_BASE_REF selects another commit
 ```
 
+`npm run build` clears old Node and browser output before generating the distributions. `npm pack`
+runs it automatically; consumer checks reject stale generated modules. Installation never changes Git hooks.
+Browser CI validates the packed ESM and global bundles, browser export selection, Web Streams, and module
+workers in Chromium, Firefox, and WebKit with the minimum and latest N3 peers.
+
 `FUZZ_SEED=… FUZZ_ITERATIONS=…` repeats the property test with another seed; a failure prints its seed and a minimized log.
+The grammar suite replays pinned N3.js cases through synchronous and single-character chunked parsing,
+with RDF isomorphism for results and rejection checks for invalid input. It intentionally excludes N3's
+permissive quad extensions to the default grammar, non-string formats, comment callbacks, and accepting
+unsupported versions, which are outside this package's API. The fixture records its upstream commit
+and license; regenerate it with `npm run test:n3-extract -- ../N3.js` and review the resulting changes.
 
 ## License
 
