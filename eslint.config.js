@@ -371,7 +371,14 @@ export default [
 
   {
     files: ['scripts/consumer/*'],
-    rules: { 'func-style': 0, 'no-continue': 0, 'import-x/extensions': 0 },
+    rules: {
+      'func-style': 0,
+      'no-continue': 0,
+      'import-x/extensions': 0,
+      // These fixtures run against an installed tarball in test:package. Generated
+      // entry points do not exist yet when lint runs in a clean checkout.
+      'import-x/no-unresolved': [2, { ignore: ['^n3\\.js-messages(?:/browser)?$'] }],
+    },
   },
   {
     files: ['test/UpstreamGrammar-test.js'],
