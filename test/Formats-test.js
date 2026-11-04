@@ -20,6 +20,23 @@ describe('formats', () => {
     expect(isSupportedVersion('1.2')).toBe(true);
     expect(isSupportedVersion('3.0')).toBe(false);
   });
+
+  it('reads quoted, escaped and case-insensitive version parameters', () => {
+    expect(resolveFormat('text/turtle; charset=utf-8; VERSION = "1.2-messages"')).toEqual({
+      name: 'Turtle', lineMode: false, version: '1.2-messages',
+    });
+    expect(resolveFormat('application/trig; version=1.1-messages ; charset=utf-8').version).toBe('1.1-messages');
+    expect(resolveFormat('text/turtle; version="1.2\\-messages"').version).toBe('1.2-messages');
+    expect(resolveFormat('text/turtle; other="ignored; version=9.9-messages"').version).toBeUndefined();
+    expect(resolveFormat('text/turtle; version=1.2').version).toBe('1.2');
+    // A parameter must not change the shared format descriptor.
+    expect(resolveFormat('text/turtle').version).toBeUndefined();
+  });
+
+  it('rejects duplicate version parameters, including empty ones', () => {
+    expect(() => resolveFormat('text/turtle; version=1.2; VERSION="1.2"')).toThrow(/Duplicate/);
+    expect(() => resolveFormat('text/turtle; version=; version=1.2')).toThrow(/Duplicate/);
+  });
 });
 
 describe('the vendored RDF Messages test suite', () => {

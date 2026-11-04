@@ -9,6 +9,13 @@ const V = 'VERSION "1.2-messages"\n';
 
 describe('MessageStreamParser', () => {
   describe('basic behaviour', () => {
+    it('reads a media type announcement across single-character chunks with message-scoped blank nodes', async () => {
+      const input = '_:a <a:p> "first" .\nMESSAGE\nMESSAGE\n_:a <a:p> "last" .\n';
+      const messages = await streamResult([...input], { format: 'application/n-triples; version="1.2-messages"' });
+      expect(messages.map(message => message.length)).toEqual([1, 0, 1]);
+      expect(messages[0][0].subject.equals(messages[2][0].subject)).toBe(false);
+    });
+
     it('is an object-mode stream of messages', async () => {
       const parser = new MessageStreamParser({ format: 'N-Quads' });
       expect(parser.readableObjectMode).toBe(true);

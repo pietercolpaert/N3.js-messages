@@ -71,6 +71,33 @@ describe('MessageWriter', () => {
       expect(writeMessages([], { format: 'TriG', version: '1.2-basic-messages' })).toBe('@version "1.2-basic-messages".\n');
     });
 
+    it.each(['Turtle', 'TriG', 'N-Triples', 'N-Quads'])(
+      'omits the version announcement in %s when announced externally', format => {
+        const messages = [[], [q1(1)], []];
+        const text = writeMessages(messages, { format, writeVersion: false });
+        expect(text).not.toMatch(/version/i);
+        expect(render(parseMessages(text, { format, version: '1.2-messages' }))).toEqual(render(messages));
+        expect(writeMessages([], { format, writeVersion: false })).toBe('');
+      });
+
+    it('keeps prefixes and base declarations when omitting the version', () => {
+      const options = { format: 'text/turtle; version=1.1-messages', prefixes: { ex: 'http://example.org/' },
+        baseIRI: 'http://example.org/', writeBase: true, writeVersion: false };
+      const text = writeMessages([[q1(1)]], options);
+      expect(text).toContain('@prefix ex:');
+      expect(text).toContain('@base');
+      expect(render(parseMessages(text, { format: options.format }))).toEqual(render([[q1(1)]]));
+    });
+
+    it('uses media type versions with explicit options taking precedence', () => {
+      expect(writeMessages([], { format: 'application/n-triples; version="1.1-messages"' }))
+        .toBe('VERSION "1.1-messages"\n');
+      expect(writeMessages([], { format: 'application/n-triples; version=1.1-messages', version: '1.2-messages' }))
+        .toBe('VERSION "1.2-messages"\n');
+      expect(() => writeMessages([], { format: 'text/turtle; version=9.9-messages', writeVersion: false }))
+        .toThrow(/Unsupported RDF Messages version/);
+    });
+
     it('rejects versions that do not announce messages or are unsupported', () => {
       expect(() => new MessageWriter({ version: '1.2' })).toThrow(/Unsupported RDF Messages version/);
       expect(() => new MessageWriter({ version: '9.9-messages' })).toThrow(/Unsupported RDF Messages version/);

@@ -68,7 +68,34 @@ new MessageParser({ format: 'TriG' }).parse(text, {
 ```
 
 Messages are not merged, empty messages are preserved, and quads keep the order of the document.
-A document that does not announce a `-messages` version is one message, and a delimiter in it is an error.
+A document that does not announce a `-messages` version (in-line or externally) is one message, and a delimiter in it is an error.
+
+### Announcing messages through Content-Type
+
+An in-line `VERSION` statement is optional when the version is announced externally, for example by an HTTP response header:
+
+```http
+Content-Type: text/turtle; version=1.2-messages
+```
+
+Pass the full media type as `format`; its `version` parameter enables message parsing even when the body has no `VERSION` statement:
+
+```js
+const messages = parseMessages(body, {
+  format: 'text/turtle; version=1.2-messages',
+});
+// Equivalent: { format: 'Turtle', version: '1.2-messages' }
+```
+
+Quoted parameter values and case-insensitive parameter names are supported; unrelated parameters such as `charset` are ignored.
+An explicit `version` option overrides the media type parameter. Either external version takes precedence over in-line announcements;
+`onVersion` still reports the labels encountered in the body. Without an external version, in-line announcements determine message mode.
+`messages: true` explicitly enables message mode regardless of the version label.
+These options work with synchronous, Node.js stream, and browser parsers.
+
+HTTP clients can request a message log using `Accept: text/turtle; version=1.2-messages`, but should configure parsing from
+the response's `Content-Type`, since content negotiation may return a different version. This package parses RDF payloads;
+the application reads and writes HTTP headers.
 
 ## Streaming
 
@@ -147,6 +174,20 @@ await writer.end();
 
 const text = writeMessages(messages, { format: 'N-Quads' });  // synchronous, returns a string
 ```
+
+When the application announces the version externally, use `writeVersion: false` to omit the in-line announcement:
+
+```js
+// Send with Content-Type: text/turtle; version=1.2-messages
+const body = writeMessages(messages, {
+  format: 'text/turtle; version=1.2-messages',
+  writeVersion: false,
+});
+```
+
+This option also works with `MessageWriter` and both stream writers. It preserves delimiters, prefixes, and base declarations.
+The writer reads the version from the media type unless overridden by `version`; it defaults to `1.2-messages` and
+still validates the label when `writeVersion: false`. By default, it writes the in-line announcement even when the media type includes a version.
 
 - Writes `VERSION "1.2-messages"` (`@version "1.2-messages".` in Turtle/TriG) first, and a delimiter after each message:
   `MESSAGE` in N-Triples and N-Quads, `@message .` in Turtle and TriG. A parser gets a message when it is written, and a trailing empty

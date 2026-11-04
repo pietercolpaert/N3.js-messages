@@ -17,14 +17,14 @@ export interface MessageQuadFactory<Q extends RDF.BaseQuad = RDF.Quad>
 }
 
 export interface MessageParserOptions<Q extends RDF.BaseQuad = RDF.Quad> {
-  /** Syntax name or media type, case-insensitive. Defaults to `TriG`. */
+  /** Syntax name or media type, including its optional `version` parameter. Defaults to `TriG`. */
   format?: MessageFormat;
   baseIRI?: string;
   /** Data factory used to create terms and quads. */
   factory?: MessageQuadFactory<Q>;
   /** Prefix for generated blank node labels, e.g. `b0_`. */
   blankNodePrefix?: string;
-  /** RDF version label, e.g. `1.2-messages`; a `-messages` suffix forces message mode. */
+  /** RDF version label; overrides the media type parameter and in-line announcements. A `-messages` suffix forces message mode. */
   version?: string;
   /** Force message mode even without a `-messages` version declaration. */
   messages?: boolean;
@@ -45,15 +45,17 @@ export interface MessageParseCallbacks<Q extends RDF.BaseQuad = RDF.Quad> {
 }
 
 export interface MessageWriterOptions {
-  /** Syntax name or media type, case-insensitive. Defaults to `TriG`. */
+  /** Syntax name or media type, including its optional `version` parameter. Defaults to `TriG`. */
   format?: MessageFormat;
   /** Prefixes that are declared up front. */
   prefixes?: { [prefix: string]: RDF.NamedNode | string };
   baseIRI?: string;
   writeBase?: boolean;
   lists?: { [listHead: string]: RDF.Term[] };
-  /** RDF version label announced in the output. Defaults to `1.2-messages`. */
+  /** RDF version label; overrides the media type parameter. Defaults to `1.2-messages`. */
   version?: string;
+  /** Write an in-line version announcement. Defaults to `true`; set to `false` when announced externally. */
+  writeVersion?: boolean;
   /** Whether to end the output stream on `end()`. Defaults to `true`. */
   end?: boolean;
 }

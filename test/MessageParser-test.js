@@ -309,6 +309,33 @@ describe('MessageParser', () => {
       expect(parseAll(`${T(1, 1)}MESSAGE\n${T(2, 2)}`, { format: 'TriG', messages: true })).toEqual([[R(1, 1)], [R(2, 2)]]);
       expect(parseAll(`${T(1, 1)}MESSAGE\n${T(2, 2)}`, { format: 'N-Quads', messages: true })).toEqual([[R(1, 1)], [R(2, 2)]]);
     });
+
+    it.each(['text/turtle', 'application/trig', 'application/n-triples', 'application/n-quads'])(
+      'uses the version parameter of %s without an in-line announcement', format => {
+        for (const version of ['1.2-messages', '"1.1-messages"', '"1.2-basic-messages"'])
+          expect(parseAll(`${T(1, 1)}MESSAGE\nMESSAGE\n${T(2, 2)}`, { format: `${format}; charset=utf-8; version=${version}` }))
+            .toEqual([[R(1, 1)], [], [R(2, 2)]]);
+      });
+
+    it('validates media type versions before parsing', () => {
+      for (const version of ['9.9-messages', '', '"unterminated', '"1.2"junk'])
+        expect(() => new MessageParser({ format: `text/turtle; version=${version}` })).toThrow(/unsupported version/);
+    });
+
+    it('gives explicit version options precedence over media type parameters', () => {
+      expect(parseAll(`${T(1, 1)}MESSAGE\n`, { format: 'text/turtle; version=9.9-messages', version: '1.2-messages' }))
+        .toEqual([[R(1, 1)]]);
+      expect(() => parseMessages(`${T(1, 1)}MESSAGE\n`, { format: 'text/turtle; version=1.2-messages', version: '1.2' }))
+        .toThrow(/did not announce/);
+    });
+
+    it('gives external versions precedence over conflicting in-line announcements', () => {
+      expect(parseAll(`VERSION "1.2"\n${T(1, 1)}MESSAGE\n`, { format: 'text/turtle; version=1.2-messages' }))
+        .toEqual([[R(1, 1)]]);
+      expect(() => parseMessages(`${V}${T(1, 1)}MESSAGE\n`, { format: 'text/turtle; version=1.2' }))
+        .toThrow(/did not announce/);
+      expect(parseAll(`VERSION "9.9"\n${T(1, 1)}`, { version: '1.2' })).toEqual([[R(1, 1)]]);
+    });
   });
 
   describe('callbacks', () => {

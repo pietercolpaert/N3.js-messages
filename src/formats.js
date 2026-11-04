@@ -12,6 +12,7 @@ const FORMATS = {
 const BASE_VERSIONS = ['1.2', '1.2-basic', '1.1'];
 
 // ### `resolveFormat` maps a format name or media type to a supported syntax
+/** @returns {{ name: string; lineMode: boolean; version?: string }} */
 export function resolveFormat(format = 'TriG') {
   const key = String(format).toLowerCase().replace(/;[\s\S]*$/, '').trim()
     .replace(/^(?:text|application)\//, '')
@@ -21,7 +22,17 @@ export function resolveFormat(format = 'TriG') {
   if (!resolved)
     throw new TypeError(`Unsupported RDF Messages format: "${format}". ` +
                         'Supported formats are Turtle, TriG, N-Triples and N-Quads.');
-  return resolved;
+  let version;
+  // Consume quoted values whole, so a semicolon inside another parameter cannot
+  // accidentally introduce a version parameter. Parameter names are case-insensitive.
+  for (const parameter of String(format).matchAll(/;\s*([^;=\s]+)\s*=\s*("(?:[^"\\]|\\.)*"|[^;]*)\s*(?=;|$)/g)) {
+    if (/** @type {string} */ (parameter[1]).toLowerCase() === 'version') {
+      if (version !== undefined)
+        throw new TypeError('Duplicate RDF version parameter.');
+      version = /** @type {string} */ (parameter[2]).trim().replace(/^"(.*)"$/, '$1').replace(/\\(.)/g, '$1');
+    }
+  }
+  return version === undefined ? resolved : { ...resolved, version };
 }
 
 /** @param {unknown} version */

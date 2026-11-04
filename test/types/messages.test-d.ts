@@ -24,6 +24,11 @@ new MessageParser({ format: 'N-Quads' });
 new MessageParser({ format: 'ntriples' });
 new MessageParser(options);
 new MessageParser({ factory: DataFactory });
+new MessageParser({ format: 'text/turtle; version="1.2-messages"' });
+new MessageWriter({ writeVersion: false });
+new MessageStreamWriter({ writeVersion: false });
+// @ts-expect-error: writeVersion must be a boolean
+new MessageWriter({ writeVersion: 'false' });
 
 // --- Return values
 const parser = new MessageParser();

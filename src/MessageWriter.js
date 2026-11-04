@@ -37,7 +37,7 @@ export default class MessageWriter {
     options = options || {};
     this._format = resolveFormat(options.format);
     this._options = options;
-    this._version = options.version === undefined ? '1.2-messages' : options.version;
+    this._version = options.version ?? this._format.version ?? '1.2-messages';
     if (!isMessagesVersion(this._version) || !isSupportedVersion(baseVersion(this._version)))
       throw new TypeError(`Unsupported RDF Messages version: "${this._version}"`);
 
@@ -241,7 +241,7 @@ export default class MessageWriter {
       this._writer = new LogWriter(this._sink, {
         format: this._format.name,
         end: false,
-        version: this._version,
+        version: options.writeVersion === false ? undefined : this._version,
         baseIRI: options.baseIRI,
         writeBase: options.writeBase,
         prefixes: this._declared,

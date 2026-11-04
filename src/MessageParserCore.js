@@ -17,6 +17,7 @@ export default class MessageParserCore {
   constructor(options, sink) {
     options = options || {};
     const format = resolveFormat(options.format);
+    this._version = options.version ?? format.version;
     this._sink = sink;
 
     /** @type {import('../common.js').MessageQuadFactory<Q>} */
@@ -25,7 +26,7 @@ export default class MessageParserCore {
       options.blankNodePrefix.replace(/^_:/, '') : undefined;
     this._blankNodeCounter = 0;
     this._supportedVersions = Parser.SUPPORTED_VERSIONS;
-    this._messages = options.messages === true || isMessagesVersion(options.version);
+    this._messages = options.messages === true || isMessagesVersion(this._version);
     this._index = 0;
 
     /** @type {Q[] | null} */
@@ -49,9 +50,9 @@ export default class MessageParserCore {
     };
     if (options.baseIRI)
       n3Options.baseIRI = options.baseIRI;
-    if (options.version) {
-      this._checkVersion(options.version, true);
-      n3Options.version = baseVersion(options.version);
+    if (this._version !== undefined) {
+      this._checkVersion(this._version, true);
+      n3Options.version = baseVersion(this._version);
     }
 
     this._input = new EventEmitter();
@@ -126,10 +127,12 @@ export default class MessageParserCore {
 
   /** @param {string} label */
   _announce(label) {
-    const error = this._checkVersion(label);
+    // An externally supplied version takes precedence over in-line announcements.
+    const version = this._version ?? label;
+    const error = this._checkVersion(version);
     if (error)
       return this._fail(error);
-    if (isMessagesVersion(label) && !this._messages) {
+    if (isMessagesVersion(version) && !this._messages) {
       if (this._seenQuad)
         return this._fail(new Error(`Version "${label}" must be announced before the first statement.`));
       this._messages = true;

@@ -21,6 +21,17 @@ function source(chunks) {
 }
 
 describe('Browser Web Streams', () => {
+  it('round trips messages with an external media type announcement', async () => {
+    const messages = parseMessages(INPUT);
+    const format = 'text/turtle; charset=utf-8; version="1.2-messages"';
+    const text = (await collect(source(messages).pipeThrough(new MessageStreamWriter({ format, writeVersion: false })))).join('');
+    expect(text).not.toMatch(/version/i);
+    const back = await collect(source([...text]).pipeThrough(new MessageStreamParser({ format })));
+    expect(back.map(message => message.length)).toEqual([1, 0, 1]);
+    expect(back[0][0].object.value).toBe('☃😀');
+    expect(back[0][0].subject.equals(back[2][0].subject)).toBe(false);
+  });
+
   it('parses strings, split UTF-8 bytes, ArrayBuffers and views with events', async () => {
     const prefixes = [], versions = [];
     const bytes = new TextEncoder().encode(INPUT);
