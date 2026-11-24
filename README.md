@@ -91,11 +91,36 @@ Quoted parameter values and case-insensitive parameter names are supported; unre
 An explicit `version` option overrides the media type parameter. Either external version takes precedence over in-line announcements;
 `onVersion` still reports the labels encountered in the body. Without an external version, in-line announcements determine message mode.
 `messages: true` explicitly enables message mode regardless of the version label.
+
 These options work with synchronous, Node.js stream, and browser parsers.
 
 HTTP clients can request a message log using `Accept: text/turtle; version=1.2-messages`, but should configure parsing from
 the response's `Content-Type`, since content negotiation may return a different version. This package parses RDF payloads;
 the application reads and writes HTTP headers.
+
+### Continuing a message log
+
+A message log that grows can be parsed piece by piece: `getState()` gives what a next parser needs to continue with the
+input that follows, for example the bytes appended to a file and fetched with an HTTP Range request. Pass it as the
+`state` option:
+
+```js
+import { MessageParser } from 'n3.js-messages';
+
+const first = new MessageParser({ format: 'TriG' });
+const messages = first.parse(textSoFar);
+const state = first.getState(); // plain data: store it as JSON
+
+// Later, with only the text that was appended after textSoFar:
+const more = new MessageParser({ format: 'TriG', state }).parse(appendedText);
+```
+
+The state holds the version label, the prefixes, the base IRI, the number of messages (so message indexes continue)
+and of generated blank node labels (so they stay unique), and whether the last message ended at the end of the input.
+In that case a `MESSAGE` delimiter at the start of the appended text closes that message, instead of making an empty
+one. Together, the messages of both parsers are those of the whole text. Cut the text between messages.
+`MessageStreamParser` (Node.js and browser) has the same `getState()` and `state` option. `getState()` is `undefined`
+while a message is incomplete, after an error, and for a document that is not a message log.
 
 ## Streaming
 

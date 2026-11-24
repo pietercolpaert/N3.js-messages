@@ -24,6 +24,15 @@ export default class MessageStreamParser extends Transform {
     });
   }
 
+  // ### `getState` gives what a next parser needs to continue this message log
+  // with the input that follows: pass it as the `state` option. It is
+  // undefined while a message is incomplete, after an error, and for a
+  // document that is not a message log.
+  /** @returns {import('../common.js').MessageParserState | undefined} */
+  getState() {
+    return this._core.getState();
+  }
+
   /** @param {string | Buffer} chunk
    * @param {BufferEncoding} encoding
    * @param {import('node:stream').TransformCallback} done */

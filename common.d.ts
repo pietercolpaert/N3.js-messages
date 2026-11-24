@@ -28,6 +28,33 @@ export interface MessageParserOptions<Q extends RDF.BaseQuad = RDF.Quad> {
   version?: string;
   /** Force message mode even without a `-messages` version declaration. */
   messages?: boolean;
+  /**
+   * Continue a message log from the state of an earlier parser (its `getState()`): the input is what followed the
+   * input of that parser, for example the bytes appended to a growing file and fetched with an HTTP Range request.
+   */
+  state?: MessageParserState;
+}
+
+/**
+ * What a parser needs to continue a message log with the input that follows, as JSON-serializable data.
+ * Pass it as the `state` option.
+ */
+export interface MessageParserState {
+  /** The version label in effect, e.g. `1.2-messages`; null when message mode was forced without one. */
+  version: string | null;
+  /** The prefixes that were declared, and that the input that follows can use. */
+  prefixes: { [prefix: string]: string };
+  /** The base IRI in effect, when there is one. */
+  base?: string;
+  /** The number of messages so far: the index of the next message. */
+  messages: number;
+  /** The number of blank node labels generated so far (with `blankNodePrefix`), so that they stay unique. */
+  blankNodes: number;
+  /**
+   * Whether the last message ended at the end of the input, rather than at a delimiter. A delimiter at the start of
+   * the input that follows then closes that message, instead of making an empty one.
+   */
+  open: boolean;
 }
 
 export type MessageCallback<Q extends RDF.BaseQuad = RDF.Quad> = (

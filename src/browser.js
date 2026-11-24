@@ -16,9 +16,12 @@ export class MessageStreamParser extends TransformStream {
 
     /** @type {MessageParserCore<Q>} */
     let core;
+
+    /** @type {{ core?: MessageParserCore<Q> }} */
+    const shared = {};
     super({
       start(controller) {
-        core = new MessageParserCore(options, {
+        core = shared.core = new MessageParserCore(options, {
           message: quads => controller.enqueue(quads),
           end: () => {},
           error: error => { throw error; },
@@ -34,6 +37,17 @@ export class MessageStreamParser extends TransformStream {
         core.end();
       },
     });
+    // `start` runs during construction, so the core exists here
+    this._core = /** @type {MessageParserCore<Q>} */ (shared.core);
+  }
+
+  // ### `getState` gives what a next parser needs to continue this message log
+  // with the input that follows: pass it as the `state` option. It is
+  // undefined while a message is incomplete, after an error, and for a
+  // document that is not a message log.
+  /** @returns {import('../common.js').MessageParserState | undefined} */
+  getState() {
+    return this._core.getState();
   }
 }
 

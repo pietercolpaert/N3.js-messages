@@ -3,7 +3,7 @@ import * as RDF from '@rdfjs/types';
 import { Transform } from 'stream';
 
 export * from './common.js';
-import type { MessageParserOptions, MessageCallback, MessageParseCallbacks, MessageWriterOptions } from './common.js';
+import type { MessageParserOptions, MessageParserState, MessageCallback, MessageParseCallbacks, MessageWriterOptions } from './common.js';
 
 export class MessageParser<Q extends RDF.BaseQuad = RDF.Quad> {
   constructor(options?: MessageParserOptions<Q>);
@@ -15,6 +15,8 @@ export class MessageParser<Q extends RDF.BaseQuad = RDF.Quad> {
   parse(input: string | NodeJS.ReadableStream, callbacks: MessageParseCallbacks<Q>): void;
   /** Parses a stream without callbacks (reports nothing). */
   parse(input: NodeJS.ReadableStream): void;
+  /** What a next parser needs to continue the message log of the last parse; pass it as the `state` option. */
+  getState(): MessageParserState | undefined;
 }
 
 export function parseMessages<Q extends RDF.BaseQuad = RDF.Quad>(
@@ -25,6 +27,8 @@ export function parseMessages<Q extends RDF.BaseQuad = RDF.Quad>(
 export class MessageStreamParser<Q extends RDF.BaseQuad = RDF.Quad> extends Transform
   implements AsyncIterable<Q[]> {
   constructor(options?: MessageParserOptions<Q>);
+  /** What a next parser needs to continue this message log; pass it as the `state` option. */
+  getState(): MessageParserState | undefined;
   on(event: 'prefix', listener: (prefix: string, term: RDF.NamedNode) => void): this;
   on(event: 'version', listener: (version: string) => void): this;
   on(event: 'data', listener: (message: Q[]) => void): this;

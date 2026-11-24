@@ -1,5 +1,5 @@
 import type * as RDF from '@rdfjs/types';
-import type { MessageParserOptions, MessageCallback, MessageParseCallbacks, MessageWriterOptions } from './common.js';
+import type { MessageParserOptions, MessageParserState, MessageCallback, MessageParseCallbacks, MessageWriterOptions } from './common.js';
 export * from './common.js';
 
 export class MessageParser<Q extends RDF.BaseQuad = RDF.Quad> {
@@ -7,6 +7,8 @@ export class MessageParser<Q extends RDF.BaseQuad = RDF.Quad> {
   parse(input: string): Q[][];
   parse(input: string, callback: MessageCallback<Q>): void;
   parse(input: string, callbacks: MessageParseCallbacks<Q>): void;
+  /** What a next parser needs to continue the message log of the last parse; pass it as the `state` option. */
+  getState(): MessageParserState | undefined;
 }
 export function parseMessages<Q extends RDF.BaseQuad = RDF.Quad>(input: string, options?: MessageParserOptions<Q>): Q[][];
 
@@ -18,6 +20,8 @@ export interface BrowserParserOptions<Q extends RDF.BaseQuad = RDF.Quad> extends
 /** Use source.pipeThrough(new MessageStreamParser(options)). */
 export class MessageStreamParser<Q extends RDF.BaseQuad = RDF.Quad> extends TransformStream<MessageChunk, Q[]> {
   constructor(options?: BrowserParserOptions<Q>);
+  /** What a next parser needs to continue this message log; pass it as the `state` option. */
+  getState(): MessageParserState | undefined;
 }
 export type MessageWriterInput = RDF.BaseQuad[] | { quad: RDF.BaseQuad; messageIndex?: number };
 /** Emits strings; pipe through TextEncoderStream to obtain UTF-8 bytes. */

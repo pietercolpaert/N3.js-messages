@@ -18,6 +18,15 @@ export default class MessageParser {
     return new MessageParserCore(this._options, sink);
   }
 
+  // ### `getState` gives what a next parser needs to continue the message log
+  // of the last `parse` call with the input that follows: pass it as the
+  // `state` option. It is undefined before a parse, while a message is
+  // incomplete, after an error, and for a document that is not a message log.
+  /** @returns {import('../common.js').MessageParserState | undefined} */
+  getState() {
+    return this._core?.getState();
+  }
+
   // ### `parse` parses a string or a readable stream of RDF Messages.
   //
   // Without callbacks, a string is parsed synchronously into an array of
@@ -69,7 +78,7 @@ export default class MessageParser {
       sink.prefix = callbacks.onPrefix;
     if (callbacks.onVersion)
       sink.version = callbacks.onVersion;
-    const core = this._createCore(sink);
+    const core = this._core = this._createCore(sink);
 
     // Parse a string at once
     if (typeof input === 'string') {
